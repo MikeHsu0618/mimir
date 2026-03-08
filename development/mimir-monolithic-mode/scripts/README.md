@@ -58,11 +58,11 @@ When `MIMIR_TENANT_ID` is set, cloud mode is activated:
 
 All other phases (1, 2, 5–9) run normally against the remote endpoint.
 
-| Variable | Description | Default |
-|---|---|---|
-| `MIMIR_URL` | Mimir base URL | `http://localhost:8101` |
-| `MIMIR_TENANT_ID` | Tenant ID; enables cloud mode when set | (unset) |
-| `MIMIR_API_TOKEN` | API token (basic auth with tenant ID as username) | (unset) |
+| Variable          | Description                                       | Default                 |
+| ----------------- | ------------------------------------------------- | ----------------------- |
+| `MIMIR_URL`       | Mimir base URL                                    | `http://localhost:8101` |
+| `MIMIR_TENANT_ID` | Tenant ID; enables cloud mode when set            | (unset)                 |
+| `MIMIR_API_TOKEN` | API token (basic auth with tenant ID as username) | (unset)                 |
 
 ### Configuration
 
