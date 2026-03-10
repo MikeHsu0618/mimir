@@ -1669,7 +1669,7 @@ func (i *Ingester) pushSamplesToAppender(
 	type resourceTableEntry struct {
 		contentHash uint64
 		ra          *mimirpb.ResourceAttributes // raw proto ref (valid for request lifetime)
-		ctx         *storage.ResourceContext     // lazily built on first access
+		ctx         *storage.ResourceContext    // lazily built on first access
 	}
 	var resourceCache []resourceTableEntry
 	if len(resourceTable) > 0 {
@@ -1691,7 +1691,7 @@ func (i *Ingester) pushSamplesToAppender(
 	type scopeTableEntry struct {
 		contentHash uint64
 		sa          *mimirpb.ScopeAttributes // raw proto ref (valid for request lifetime)
-		ctx         *storage.ScopeContext     // lazily built on first access
+		ctx         *storage.ScopeContext    // lazily built on first access
 	}
 	var scopeCache []scopeTableEntry
 	if len(scopeTable) > 0 {
