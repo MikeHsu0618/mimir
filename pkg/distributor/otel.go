@@ -82,6 +82,7 @@ func OTLPHandler(
 	retryCfg RetryConfig,
 	OTLPPushMiddlewares []OTLPPushMiddleware,
 	persistResourceAttributes bool,
+	persistScopeAttributes bool,
 	push PushFunc,
 	pushMetrics *PushMetrics,
 	reg prometheus.Registerer,
@@ -104,7 +105,7 @@ func OTLPHandler(
 		parser := newOTLPParser(
 			limits, resourceAttributePromotionConfig, keepIdentifyingOTelResourceAttributesConfig,
 			otlpConverter, pushMetrics, discardedDueToOtelParseError,
-			OTLPPushMiddlewares, persistResourceAttributes,
+			OTLPPushMiddlewares, persistResourceAttributes, persistScopeAttributes,
 		)
 
 		supplier := func() (*mimirpb.WriteRequest, func(), int, error) {
@@ -233,6 +234,7 @@ func newOTLPParser(
 	discardedDueToOtelParseError *prometheus.CounterVec,
 	OTLPPushMiddlewares []OTLPPushMiddleware,
 	persistResourceAttributes bool,
+	persistScopeAttributes bool,
 ) parserFunc {
 	if resourceAttributePromotionConfig == nil {
 		resourceAttributePromotionConfig = limits
@@ -382,6 +384,7 @@ func newOTLPParser(
 			underscoreSanitization:            limits.OTelLabelNameUnderscoreSanitization(tenantID),
 			preserveMultipleUnderscores:       limits.OTelLabelNamePreserveMultipleUnderscores(tenantID),
 			persistResourceAttributes:         persistResourceAttributes,
+			persistScopeAttributes:            persistScopeAttributes,
 		}
 		metrics, metadata, resourceTable, scopeTable, metricsDropped, err := otelMetricsToSeriesAndMetadata(
 			ctx,
@@ -581,6 +584,7 @@ type conversionOptions struct {
 	underscoreSanitization            bool
 	preserveMultipleUnderscores       bool
 	persistResourceAttributes         bool
+	persistScopeAttributes            bool
 }
 
 func otelMetricsToSeriesAndMetadata(
@@ -603,6 +607,7 @@ func otelMetricsToSeriesAndMetadata(
 	}
 	converter.appender.EnableCreatedTimestampZeroIngestion = opts.enableCTZeroIngestion
 	converter.appender.PersistResourceAttributes = opts.persistResourceAttributes
+	converter.appender.PersistScopeAttributes = opts.persistScopeAttributes
 	mimirTS, metadata, resourceTable, scopeTable := converter.ToSeriesAndMetadata(ctx, md, settings, logger)
 
 	dropped := converter.DroppedTotal()
