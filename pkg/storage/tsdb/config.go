@@ -103,20 +103,20 @@ const (
 
 // Validation errors
 var (
-	errInvalidShipConcurrency                             = errors.New("invalid TSDB ship concurrency")
-	errInvalidCompactionInterval                          = errors.New("invalid TSDB compaction interval")
-	errInvalidCompactionConcurrency                       = errors.New("invalid TSDB compaction concurrency")
-	errInvalidWALSegmentSizeBytes                         = errors.New("invalid TSDB WAL segment size bytes")
-	errInvalidWALReplayConcurrency                        = errors.New("invalid TSDB WAL replay concurrency")
-	errInvalidStripeSize                                  = errors.New("invalid TSDB stripe size")
-	errInvalidStreamingBatchSize                          = errors.New("invalid store-gateway streaming batch size")
-	errInvalidEarlyHeadCompactionMinSeriesReduction       = errors.New("early compaction minimum series reduction percentage must be a value between 0 and 100 (included)")
-	errResourceAttrIndexRequiresPersistResourceAttributes    = errors.New("otel_resource_attr_index_enabled requires otel_persist_resource_attributes to be enabled")
+	errInvalidShipConcurrency                                  = errors.New("invalid TSDB ship concurrency")
+	errInvalidCompactionInterval                               = errors.New("invalid TSDB compaction interval")
+	errInvalidCompactionConcurrency                            = errors.New("invalid TSDB compaction concurrency")
+	errInvalidWALSegmentSizeBytes                              = errors.New("invalid TSDB WAL segment size bytes")
+	errInvalidWALReplayConcurrency                             = errors.New("invalid TSDB WAL replay concurrency")
+	errInvalidStripeSize                                       = errors.New("invalid TSDB stripe size")
+	errInvalidStreamingBatchSize                               = errors.New("invalid store-gateway streaming batch size")
+	errInvalidEarlyHeadCompactionMinSeriesReduction            = errors.New("early compaction minimum series reduction percentage must be a value between 0 and 100 (included)")
+	errResourceAttrIndexRequiresPersistResourceAttributes      = errors.New("otel_resource_attr_index_enabled requires otel_persist_resource_attributes to be enabled")
 	errPersistScopeAttributesRequiresPersistResourceAttributes = errors.New("otel_persist_scope_attributes requires otel_persist_resource_attributes to be enabled")
-	errEarlyCompactionRequiresActiveSeries                = fmt.Errorf("early compaction requires -%s to be enabled", activeseries.EnabledFlag)
-	errEmptyBlockranges                                   = errors.New("empty block ranges for TSDB")
-	errInvalidIgnoreDeletionMarksDelayConfig              = fmt.Errorf("value for -%s must be less than -%s", ignoreDeletionMarksWhileQueryingDelayFlag, ignoreDeletionMarksInStoreGatewayDelayFlag)
-	errIgnoreDeletionMarksDelayTooShort                   = fmt.Errorf("value for -%s must be greater than %v× -%s to ensure that newly compacted blocks are queried before old blocks are ignored", ignoreDeletionMarksWhileQueryingDelayFlag, NewBlockDiscoveryDelayMultiplier, syncIntervalFlag)
+	errEarlyCompactionRequiresActiveSeries                     = fmt.Errorf("early compaction requires -%s to be enabled", activeseries.EnabledFlag)
+	errEmptyBlockranges                                        = errors.New("empty block ranges for TSDB")
+	errInvalidIgnoreDeletionMarksDelayConfig                   = fmt.Errorf("value for -%s must be less than -%s", ignoreDeletionMarksWhileQueryingDelayFlag, ignoreDeletionMarksInStoreGatewayDelayFlag)
+	errIgnoreDeletionMarksDelayTooShort                        = fmt.Errorf("value for -%s must be greater than %v× -%s to ensure that newly compacted blocks are queried before old blocks are ignored", ignoreDeletionMarksWhileQueryingDelayFlag, NewBlockDiscoveryDelayMultiplier, syncIntervalFlag)
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
