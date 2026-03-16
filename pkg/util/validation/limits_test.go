@@ -2514,78 +2514,6 @@ func TestOverrides_OTelTranslationStrategy(t *testing.T) {
 	})
 }
 
-func TestOverridesWithMetadata(t *testing.T) {
-	defaults := getDefaultLimits()
-	defaults.IngestionRate = 1000
-	defaults.MaxActiveSeriesPerUser = 10000
-	defaults.IngestionBurstSize = 100000
-	defaults.IngestionBurstFactor = 1.5
-
-	tenantLimits := map[string]*Limits{
-		"tenant-a": {
-			IngestionRate:          100,
-			MaxActiveSeriesPerUser: 1000,
-			IngestionBurstSize:     10000,
-			IngestionBurstFactor:   2.0,
-		},
-		"tenant-a:source=test-run": {
-			IngestionRate:             5000,
-			MaxActiveSeriesPerUser:    50000,
-			IngestionBurstSize:        50000,
-			IngestionBurstFactor:      5.0,
-			OTelMetricSuffixesEnabled: boolPtr(true),
-		},
-		"tenant-a:run-id=specific:source=test-run": {
-			IngestionRate:          9999,
-			MaxActiveSeriesPerUser: 99999,
-			IngestionBurstSize:     99999,
-			IngestionBurstFactor:   9.0,
-		},
-	}
-
-	ov := NewOverrides(defaults, NewMockTenantLimits(tenantLimits))
-
-	t.Run("IngestionRate", func(t *testing.T) {
-		assert.Equal(t, float64(100), ov.IngestionRate("tenant-a"))
-		assert.Equal(t, float64(5000), ov.IngestionRate("tenant-a:source=test-run"))
-		assert.Equal(t, float64(5000), ov.IngestionRate("tenant-a:run-id=unknown:source=test-run"))
-		assert.Equal(t, float64(9999), ov.IngestionRate("tenant-a:run-id=specific:source=test-run"))
-		assert.Equal(t, float64(1000), ov.IngestionRate("unknown-tenant"))
-	})
-
-	t.Run("MaxActiveOrGlobalSeriesPerUser", func(t *testing.T) {
-		assert.Equal(t, 1000, ov.MaxActiveOrGlobalSeriesPerUser("tenant-a"))
-		assert.Equal(t, 50000, ov.MaxActiveOrGlobalSeriesPerUser("tenant-a:source=test-run"))
-		assert.Equal(t, 50000, ov.MaxActiveOrGlobalSeriesPerUser("tenant-a:run-id=unknown:source=test-run"))
-		assert.Equal(t, 99999, ov.MaxActiveOrGlobalSeriesPerUser("tenant-a:run-id=specific:source=test-run"))
-		assert.Equal(t, 10000, ov.MaxActiveOrGlobalSeriesPerUser("unknown-tenant"))
-	})
-
-	t.Run("IngestionBurstSize", func(t *testing.T) {
-		assert.Equal(t, 10000, ov.IngestionBurstSize("tenant-a"))
-		assert.Equal(t, 50000, ov.IngestionBurstSize("tenant-a:source=test-run"))
-		assert.Equal(t, 50000, ov.IngestionBurstSize("tenant-a:run-id=unknown:source=test-run"))
-		assert.Equal(t, 99999, ov.IngestionBurstSize("tenant-a:run-id=specific:source=test-run"))
-		assert.Equal(t, 100000, ov.IngestionBurstSize("unknown-tenant"))
-	})
-
-	t.Run("IngestionBurstFactor", func(t *testing.T) {
-		assert.Equal(t, 2.0, ov.IngestionBurstFactor("tenant-a"))
-		assert.Equal(t, 5.0, ov.IngestionBurstFactor("tenant-a:source=test-run"))
-		assert.Equal(t, 5.0, ov.IngestionBurstFactor("tenant-a:run-id=unknown:source=test-run"))
-		assert.Equal(t, 9.0, ov.IngestionBurstFactor("tenant-a:run-id=specific:source=test-run"))
-		assert.Equal(t, 1.5, ov.IngestionBurstFactor("unknown-tenant"))
-	})
-
-	t.Run("OTelMetricSuffixesEnabled", func(t *testing.T) {
-		assert.False(t, ov.OTelMetricSuffixesEnabled("tenant-a"))
-		assert.True(t, ov.OTelMetricSuffixesEnabled("tenant-a:source=test-run"))
-		assert.True(t, ov.OTelMetricSuffixesEnabled("tenant-a:run-id=unknown:source=test-run"))
-		assert.True(t, ov.OTelMetricSuffixesEnabled("tenant-a:run-id=specific:source=test-run"))
-		assert.False(t, ov.OTelMetricSuffixesEnabled("unknown-tenant"))
-	})
-}
-
 func TestGetOverridesForUserWithMetadata(t *testing.T) {
 	tests := map[string]struct {
 		tenantLimits        map[string]*Limits
@@ -2594,6 +2522,7 @@ func TestGetOverridesForUserWithMetadata(t *testing.T) {
 		expectedSeries      int
 		expectedBurstSize   int
 		expectedBurstFactor float64
+		expectedOTelSuffix  *bool
 	}{
 		"nil tenantLimits returns defaults": {
 			userID:              "tenant-a:source=test-run",
@@ -2625,12 +2554,13 @@ func TestGetOverridesForUserWithMetadata(t *testing.T) {
 		"single metadata key overrides matched fields, inherits unmatched": {
 			tenantLimits: map[string]*Limits{
 				"tenant-a":                 {IngestionRate: 100, MaxActiveSeriesPerUser: 1000, IngestionBurstSize: 10000},
-				"tenant-a:source=test-run": {IngestionRate: 200},
+				"tenant-a:source=test-run": {IngestionRate: 200, OTelMetricSuffixesEnabled: boolPtr(true)},
 			},
-			userID:            "tenant-a:source=test-run",
-			expectedRate:      200,
-			expectedSeries:    1000,
-			expectedBurstSize: 10000,
+			userID:             "tenant-a:source=test-run",
+			expectedRate:       200,
+			expectedSeries:     1000,
+			expectedBurstSize:  10000,
+			expectedOTelSuffix: boolPtr(true),
 		},
 		"global metadata override (empty tenant prefix) applies to any tenant": {
 			tenantLimits:        map[string]*Limits{":source=test-run": {IngestionRate: 9000}},
@@ -2704,6 +2634,16 @@ func TestGetOverridesForUserWithMetadata(t *testing.T) {
 			userID:              "tenant-a:source=test-run",
 			expectedBurstFactor: 5.0,
 		},
+		"OTelMetricSuffixesEnabled inherited from parent overlay when child omits it": {
+			tenantLimits: map[string]*Limits{
+				"tenant-a":                 {IngestionRate: 100},
+				"tenant-a:source=test-run": {OTelMetricSuffixesEnabled: boolPtr(true)},
+				"tenant-a:run-id=specific:source=test-run": {IngestionRate: 200},
+			},
+			userID:             "tenant-a:run-id=specific:source=test-run",
+			expectedRate:       200,
+			expectedOTelSuffix: boolPtr(true),
+		},
 	}
 
 	for name, tc := range tests {
@@ -2725,6 +2665,9 @@ func TestGetOverridesForUserWithMetadata(t *testing.T) {
 			assert.Equal(t, tc.expectedSeries, got.MaxActiveSeriesPerUser)
 			assert.Equal(t, tc.expectedBurstSize, got.IngestionBurstSize)
 			assert.Equal(t, tc.expectedBurstFactor, got.IngestionBurstFactor)
+			if tc.expectedOTelSuffix != nil {
+				assert.Equal(t, tc.expectedOTelSuffix, got.OTelMetricSuffixesEnabled)
+			}
 		})
 	}
 }
