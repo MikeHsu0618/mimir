@@ -1571,7 +1571,7 @@ func (o *Overrides) OTelNativeDeltaIngestion(tenantID string) bool {
 }
 
 func (o *Overrides) OTelTranslationStrategy(tenantID string) otlptranslator.TranslationStrategyOption {
-	strategy := otlptranslator.TranslationStrategyOption(o.getOverridesForUser(tenantID).OTelTranslationStrategy)
+	strategy := otlptranslator.TranslationStrategyOption(o.getOverridesForUserWithMetadata(tenantID).OTelTranslationStrategy)
 	if strategy != "" {
 		return strategy
 	}
@@ -1634,7 +1634,7 @@ func (o *Overrides) LabelsQueryOptimizerEnabled(userID string) bool {
 
 // NameValidationScheme returns the name validation scheme to use for a particular tenant.
 func (o *Overrides) NameValidationScheme(userID string) model.ValidationScheme {
-	scheme := o.getOverridesForUser(userID).NameValidationScheme
+	scheme := o.getOverridesForUserWithMetadata(userID).NameValidationScheme
 	if scheme == model.UnsetValidation {
 		return model.LegacyValidation
 	}

@@ -2431,6 +2431,19 @@ func TestOverrides_OTelTranslationStrategy(t *testing.T) {
 			expectedTranslationStrategy: otlptranslator.UnderscoreEscapingWithSuffixes,
 		},
 		{
+			name: "explicit strategy is applied from metadata subtenant override",
+			limits: map[string]*Limits{
+				"tenant1": {
+					OTelTranslationStrategy: OTelTranslationStrategyValue(otlptranslator.UnderscoreEscapingWithSuffixes),
+				},
+				"tenant1:source=test-run": {
+					OTelTranslationStrategy: OTelTranslationStrategyValue(otlptranslator.NoTranslation),
+				},
+			},
+			tenantID:                    "tenant1:source=test-run",
+			expectedTranslationStrategy: otlptranslator.NoTranslation,
+		},
+		{
 			name: "auto-deduced: legacy validation + suffixes enabled",
 			limits: map[string]*Limits{
 				"tenant1": {
@@ -2476,6 +2489,19 @@ func TestOverrides_OTelTranslationStrategy(t *testing.T) {
 				},
 			},
 			tenantID:                    "tenant1",
+			expectedTranslationStrategy: otlptranslator.NoTranslation,
+		},
+		{
+			name: "auto-deduced strategy uses metadata name validation scheme",
+			limits: map[string]*Limits{
+				"tenant1": {
+					NameValidationScheme: model.LegacyValidation,
+				},
+				"tenant1:source=test-run": {
+					NameValidationScheme: model.UTF8Validation,
+				},
+			},
+			tenantID:                    "tenant1:source=test-run",
 			expectedTranslationStrategy: otlptranslator.NoTranslation,
 		},
 		{
