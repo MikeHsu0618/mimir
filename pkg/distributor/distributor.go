@@ -1881,14 +1881,14 @@ func (d *Distributor) prePushMaxSeriesLimitMiddleware(next PushFunc) PushFunc {
 			// User is far from limit.
 			// We can perform the track call in parallel with the metrics ingestion hoping that no series would be rejected.
 
-			d.asyncUsageTrackerCalls.WithLabelValues(fullTenantID).Inc()
+			d.asyncUsageTrackerCalls.WithLabelValues(tenantID).Inc()
 
 			if d.cfg.UsageTrackerClient.UseBatchedTracking {
 				if err := d.usageTrackerClient.TrackSeriesAsync(ctx, fullTenantID, seriesHashes); err != nil {
 					level.Error(d.log).Log("msg", "failed to track series asynchronously", "err", err, "user", fullTenantID, "series", len(seriesHashes))
 				}
 			} else {
-				cleanup := d.parallelUsageTrackerClientTrackSeriesCall(ctx, fullTenantID, seriesHashes)
+				cleanup := d.parallelUsageTrackerClientTrackSeriesCall(ctx, fullTenantID, tenantID, seriesHashes)
 				pushReq.AddCleanup(cleanup)
 			}
 
@@ -1908,7 +1908,7 @@ func (d *Distributor) prePushMaxSeriesLimitMiddleware(next PushFunc) PushFunc {
 
 		if len(req.Timeseries) == 0 {
 			// All series have been rejected, no need to talk to ingesters.
-			return newActiveSeriesLimitedError(totalTimeseries, len(rejectedHashes), d.limits.MaxActiveOrGlobalSeriesPerUser(tenantID))
+			return newActiveSeriesLimitedError(totalTimeseries, len(rejectedHashes), d.limits.MaxActiveOrGlobalSeriesPerUser(fullTenantID))
 		}
 
 		// If there's an error coming from the ingesters, prioritize that one.
@@ -1917,14 +1917,14 @@ func (d *Distributor) prePushMaxSeriesLimitMiddleware(next PushFunc) PushFunc {
 		}
 
 		if len(rejectedHashes) > 0 {
-			return newActiveSeriesLimitedError(totalTimeseries, len(rejectedHashes), d.limits.MaxActiveOrGlobalSeriesPerUser(tenantID))
+			return newActiveSeriesLimitedError(totalTimeseries, len(rejectedHashes), d.limits.MaxActiveOrGlobalSeriesPerUser(fullTenantID))
 		}
 
 		return nil
 	})
 }
 
-func (d *Distributor) parallelUsageTrackerClientTrackSeriesCall(ctx context.Context, userID string, seriesHashes []uint64) func() {
+func (d *Distributor) parallelUsageTrackerClientTrackSeriesCall(ctx context.Context, userID, metricUserID string, seriesHashes []uint64) func() {
 	done := make(chan struct{}, 1)
 	t0 := time.Now()
 	asyncTrackingCtx, cancelAsyncTracking := context.WithCancelCause(ctx)
@@ -1936,7 +1936,7 @@ func (d *Distributor) parallelUsageTrackerClientTrackSeriesCall(ctx context.Cont
 		}
 		if len(rejected) > 0 {
 			level.Warn(d.log).Log("msg", "ingested some series that should have been rejected, because they were tracked asynchronously", "user", userID, "rejected", len(rejected))
-			d.asyncUsageTrackerCallsWithRejectedSeries.WithLabelValues(userID).Inc()
+			d.asyncUsageTrackerCallsWithRejectedSeries.WithLabelValues(metricUserID).Inc()
 		}
 	}()
 
