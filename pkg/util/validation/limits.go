@@ -1602,7 +1602,7 @@ func (o *Overrides) OTelTranslationStrategy(tenantID string) otlptranslator.Tran
 }
 
 func (o *Overrides) OTelLabelNameUnderscoreSanitization(tenantID string) bool {
-	return o.getOverridesForUserWithMetadata(tenantID).OTelLabelNameUnderscoreSanitization
+	return o.getOverridesForUser(tenantID).OTelLabelNameUnderscoreSanitization
 }
 
 func (o *Overrides) OTelLabelNamePreserveMultipleUnderscores(tenantID string) bool {
