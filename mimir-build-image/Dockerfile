@@ -4,7 +4,7 @@
 # Provenance-includes-copyright: The Cortex Authors.
 
 FROM registry.k8s.io/kustomize/kustomize:v5.4.3 AS kustomize
-FROM alpine/helm:4.1.1@sha256:b5c85b997d83e89d9e8ff9215a14b03864274143981af45eb3fe729cdf782c73 AS helm
+FROM alpine/helm:4.1.3@sha256:a572075a78666ad6fb1f40cb477a9e2eabbc46f3739beeb81904a6121f6ef027 AS helm
 FROM golang:1.25.8-trixie@sha256:bc16125656839ffe56154c675f7a9662bec2ef7d4060177239914e7c6d2fd8a8
 ARG goproxyValue
 ENV GOPROXY=${goproxyValue}
