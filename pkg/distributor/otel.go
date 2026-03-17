@@ -380,7 +380,7 @@ func newOTLPParser(
 			promoteResourceAttributes:         promoteResourceAttributes,
 			allowDeltaTemporality:             allowDeltaTemporality,
 			allowUTF8:                         !translationStrategy.ShouldEscape(),
-			underscoreSanitization:            limits.OTelLabelNameUnderscoreSanitization(fullTenantId),
+			underscoreSanitization:            limits.OTelLabelNameUnderscoreSanitization(tenantID),
 			preserveMultipleUnderscores:       limits.OTelLabelNamePreserveMultipleUnderscores(tenantID),
 		}
 		metrics, metadata, metricsDropped, err := otelMetricsToSeriesAndMetadata(
