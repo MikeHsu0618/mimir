@@ -1881,14 +1881,14 @@ func (d *Distributor) prePushMaxSeriesLimitMiddleware(next PushFunc) PushFunc {
 			// User is far from limit.
 			// We can perform the track call in parallel with the metrics ingestion hoping that no series would be rejected.
 
-			d.asyncUsageTrackerCalls.WithLabelValues(fullTenantID).Inc()
+			d.asyncUsageTrackerCalls.WithLabelValues(tenantID).Inc()
 
 			if d.cfg.UsageTrackerClient.UseBatchedTracking {
 				if err := d.usageTrackerClient.TrackSeriesAsync(ctx, fullTenantID, seriesHashes); err != nil {
 					level.Error(d.log).Log("msg", "failed to track series asynchronously", "err", err, "user", fullTenantID, "series", len(seriesHashes))
 				}
 			} else {
-				cleanup := d.parallelUsageTrackerClientTrackSeriesCall(ctx, fullTenantID, seriesHashes)
+				cleanup := d.parallelUsageTrackerClientTrackSeriesCall(ctx, fullTenantID, tenantID, seriesHashes)
 				pushReq.AddCleanup(cleanup)
 			}
 
@@ -1924,19 +1924,19 @@ func (d *Distributor) prePushMaxSeriesLimitMiddleware(next PushFunc) PushFunc {
 	})
 }
 
-func (d *Distributor) parallelUsageTrackerClientTrackSeriesCall(ctx context.Context, userID string, seriesHashes []uint64) func() {
+func (d *Distributor) parallelUsageTrackerClientTrackSeriesCall(ctx context.Context, trackedUserID string, metricUserID string, seriesHashes []uint64) func() {
 	done := make(chan struct{}, 1)
 	t0 := time.Now()
 	asyncTrackingCtx, cancelAsyncTracking := context.WithCancelCause(ctx)
 	go func() {
 		defer close(done)
-		rejected, err := d.usageTrackerClient.TrackSeries(asyncTrackingCtx, userID, seriesHashes)
+		rejected, err := d.usageTrackerClient.TrackSeries(asyncTrackingCtx, trackedUserID, seriesHashes)
 		if err != nil {
-			level.Error(d.log).Log("msg", "failed to track series asynchronously", "err", err, "user", userID, "series", len(seriesHashes))
+			level.Error(d.log).Log("msg", "failed to track series asynchronously", "err", err, "user", trackedUserID, "series", len(seriesHashes))
 		}
 		if len(rejected) > 0 {
-			level.Warn(d.log).Log("msg", "ingested some series that should have been rejected, because they were tracked asynchronously", "user", userID, "rejected", len(rejected))
-			d.asyncUsageTrackerCallsWithRejectedSeries.WithLabelValues(userID).Inc()
+			level.Warn(d.log).Log("msg", "ingested some series that should have been rejected, because they were tracked asynchronously", "user", trackedUserID, "rejected", len(rejected))
+			d.asyncUsageTrackerCallsWithRejectedSeries.WithLabelValues(metricUserID).Inc()
 		}
 	}()
 
@@ -1954,16 +1954,20 @@ func (d *Distributor) parallelUsageTrackerClientTrackSeriesCall(ctx context.Cont
 
 		select {
 		case <-done:
-			level.Info(d.log).Log("msg", "async tracking call took longer than ingestion", "user", userID, "series", len(seriesHashes), "tracking_time", time.Since(t0), "time_since_cleanup", time.Since(tCleanup))
+			level.Info(d.log).Log("msg", "async tracking call took longer than ingestion", "user", trackedUserID, "series", len(seriesHashes), "tracking_time", time.Since(t0), "time_since_cleanup", time.Since(tCleanup))
 		case <-time.After(d.cfg.UsageTrackerClient.MaxTimeToWaitForAsyncTrackingResponseAfterIngestion):
-			level.Warn(d.log).Log("msg", "async tracking call took too long, canceling", "user", userID, "series", len(seriesHashes), "tracking_time", time.Since(t0), "time_since_cleanup", time.Since(tCleanup))
+			level.Warn(d.log).Log("msg", "async tracking call took too long, canceling", "user", trackedUserID, "series", len(seriesHashes), "tracking_time", time.Since(t0), "time_since_cleanup", time.Since(tCleanup))
 			cancelAsyncTracking(errors.New("async tracking call took too long"))
 		}
 	}
 }
 
 func (d *Distributor) ObserveAsyncUsageTrackerRejection(userID string) {
-	d.asyncUsageTrackerCallsWithRejectedSeries.WithLabelValues(userID).Inc()
+	metricUserID, _, err := tenant.ParseWithMetadata(userID)
+	if err != nil {
+		metricUserID = userID
+	}
+	d.asyncUsageTrackerCallsWithRejectedSeries.WithLabelValues(metricUserID).Inc()
 }
 
 var _ usagetrackerclient.UsageTrackerRejectionObserver = (*Distributor)(nil)

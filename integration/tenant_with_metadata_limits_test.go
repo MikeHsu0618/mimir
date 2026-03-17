@@ -194,9 +194,9 @@ overrides:
 		t.Logf("using tenant ID %q", orgID)
 		client, err := e2emimir.NewClient(distributor.HTTPEndpoint(), "", "", "", orgID)
 		require.NoError(t, err)
-		writtenAfterLimit := pushSeriesUntilLimitOTLP(t, client, "unknown_test_metric", testRunDefaultSeriesLimit)
+		writtenAfterLimit := pushSeriesUntilLimitOTLP(t, client, "unknown_test_metric", mainTenantSeriesLimit)
 		t.Logf("wrote %d series after limit", writtenAfterLimit)
-		require.Less(t, writtenAfterLimit, testRunDefaultSeriesLimit/10, "should not be able to write beyond the limit")
+		require.Less(t, writtenAfterLimit, mainTenantSeriesLimit/10, "should not be able to write beyond the limit")
 	})
 
 	t.Run("unknown test ID uses default test-run limit", func(t *testing.T) {
