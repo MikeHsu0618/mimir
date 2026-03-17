@@ -1543,6 +1543,10 @@ func (o *Overrides) Prom2RangeCompat(userID string) bool {
 
 func (o *Overrides) OTelMetricSuffixesEnabled(tenantID string) bool {
 	v := o.getOverridesForUserWithMetadata(tenantID).OTelMetricSuffixesEnabled
+	if v != nil {
+		return *v
+	}
+	v = o.defaultLimits.OTelMetricSuffixesEnabled
 	return v != nil && *v
 }
 
@@ -1598,7 +1602,7 @@ func (o *Overrides) OTelTranslationStrategy(tenantID string) otlptranslator.Tran
 }
 
 func (o *Overrides) OTelLabelNameUnderscoreSanitization(tenantID string) bool {
-	return o.getOverridesForUserWithMetadata(tenantID).OTelLabelNameUnderscoreSanitization
+	return o.getOverridesForUser(tenantID).OTelLabelNameUnderscoreSanitization
 }
 
 func (o *Overrides) OTelLabelNamePreserveMultipleUnderscores(tenantID string) bool {
@@ -1707,7 +1711,8 @@ func mergeLimits(dst, overlay *Limits) *Limits {
 		dst.IngestionBurstFactor = overlay.IngestionBurstFactor
 	}
 	if overlay.OTelMetricSuffixesEnabled != nil {
-		dst.OTelMetricSuffixesEnabled = overlay.OTelMetricSuffixesEnabled
+		v := *overlay.OTelMetricSuffixesEnabled
+		dst.OTelMetricSuffixesEnabled = &v
 	}
 	if overlay.NameValidationScheme != model.UnsetValidation {
 		dst.NameValidationScheme = overlay.NameValidationScheme
