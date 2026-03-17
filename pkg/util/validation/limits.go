@@ -1543,6 +1543,10 @@ func (o *Overrides) Prom2RangeCompat(userID string) bool {
 
 func (o *Overrides) OTelMetricSuffixesEnabled(tenantID string) bool {
 	v := o.getOverridesForUserWithMetadata(tenantID).OTelMetricSuffixesEnabled
+	if v != nil {
+		return *v
+	}
+	v = o.defaultLimits.OTelMetricSuffixesEnabled
 	return v != nil && *v
 }
 
