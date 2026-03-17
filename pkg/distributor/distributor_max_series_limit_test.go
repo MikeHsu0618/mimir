@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/mimir/pkg/mimirpb"
+	"github.com/grafana/mimir/pkg/util/validation"
 )
 
 func TestDistributor_Push_ShouldEnforceMaxSeriesLimits(t *testing.T) {
@@ -198,6 +199,61 @@ func TestDistributor_Push_ShouldEnforceMaxSeriesLimits(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDistributor_Push_ShouldReportSubtenantSeriesLimit(t *testing.T) {
+	const (
+		fullTenantID = "user-1:source=test-run"
+	)
+
+	now := time.Now()
+	writeReq := &mimirpb.WriteRequest{
+		Timeseries: []mimirpb.PreallocTimeseries{
+			makeTimeseries([]string{model.MetricNameLabel, "series_1"}, makeSamples(now.UnixMilli(), 1), nil, nil),
+			makeTimeseries([]string{model.MetricNameLabel, "series_2"}, makeSamples(now.UnixMilli(), 2), nil, nil),
+			makeTimeseries([]string{model.MetricNameLabel, "series_3"}, makeSamples(now.UnixMilli(), 3), nil, nil),
+		},
+	}
+	series1Hash := labels.StableHash(mimirpb.FromLabelAdaptersToLabels(writeReq.Timeseries[0].Labels))
+	series2Hash := labels.StableHash(mimirpb.FromLabelAdaptersToLabels(writeReq.Timeseries[1].Labels))
+	series3Hash := labels.StableHash(mimirpb.FromLabelAdaptersToLabels(writeReq.Timeseries[2].Labels))
+
+	testConfig := prepConfig{
+		numDistributors:         1,
+		ingestStorageEnabled:    true,
+		ingestStoragePartitions: 1,
+		limits:                  prepareDefaultLimits(),
+		overrides: func(defaults *validation.Limits) *validation.Overrides {
+			defaults.MaxActiveSeriesPerUser = 50
+
+			return validation.NewOverrides(*defaults, validation.NewMockTenantLimits(map[string]*validation.Limits{
+				fullTenantID: &validation.Limits{MaxActiveSeriesPerUser: 200},
+			}))
+		},
+		configure: func(cfg *Config) {
+			cfg.IngestStorageConfig.KafkaConfig.WriteClients = 3
+		},
+	}
+
+	distributors, _, _, _ := prepare(t, testConfig)
+	require.Len(t, distributors, 1)
+
+	usageTracker := &usageTrackerClientMock{}
+	usageTracker.On("CanTrackAsync", fullTenantID).Return(false)
+	usageTracker.On("TrackSeries", mock.Anything, fullTenantID, mock.Anything).Return([]uint64{series1Hash, series2Hash, series3Hash}, nil)
+
+	distributors[0].cfg.UsageTrackerEnabled = true
+	distributors[0].usageTrackerClient = usageTracker
+
+	ctx := user.InjectOrgID(context.Background(), fullTenantID)
+	res, err := distributors[0].Push(ctx, writeReq)
+	require.Nil(t, res)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "active series limit, set to 200")
+	require.NotContains(t, err.Error(), "set to 50")
+
+	usageTracker.AssertNumberOfCalls(t, "TrackSeries", 1)
+	usageTracker.AssertCalled(t, "TrackSeries", mock.Anything, fullTenantID, []uint64{series1Hash, series2Hash, series3Hash})
 }
 
 func BenchmarkDistributor_prePushMaxSeriesLimitMiddleware(b *testing.B) {

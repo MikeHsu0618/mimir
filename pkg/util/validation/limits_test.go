@@ -2514,6 +2514,21 @@ func TestOverrides_OTelTranslationStrategy(t *testing.T) {
 	})
 }
 
+func TestOverrides_OTelMetricSuffixesEnabled_FallbackToDefault(t *testing.T) {
+	defaults := getDefaultLimits()
+	defaults.OTelMetricSuffixesEnabled = boolPtr(true)
+
+	overrides := NewOverrides(defaults, NewMockTenantLimits(map[string]*Limits{
+		"tenant-a":                  &Limits{IngestionRate: 100},
+		"tenant-a:source=test-run":  &Limits{IngestionRate: 200},
+		"tenant-a:source=other-run": &Limits{OTelMetricSuffixesEnabled: boolPtr(false)},
+	}))
+
+	assert.True(t, overrides.OTelMetricSuffixesEnabled("tenant-a"))
+	assert.True(t, overrides.OTelMetricSuffixesEnabled("tenant-a:source=test-run"))
+	assert.False(t, overrides.OTelMetricSuffixesEnabled("tenant-a:source=other-run"))
+}
+
 func TestGetOverridesForUserWithMetadata(t *testing.T) {
 	tests := map[string]struct {
 		tenantLimits        map[string]*Limits
