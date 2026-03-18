@@ -66,7 +66,15 @@ overrides:
 
 	compareOptions := []cmp.Option{
 		cmp.AllowUnexported(validation.Limits{}),
-		cmpopts.IgnoreFields(validation.Limits{}, "activeSeriesMergedCustomTrackersConfig"),
+		cmpopts.IgnoreFields(
+			validation.Limits{},
+			"activeSeriesMergedCustomTrackersConfig",
+			"mergeFieldPresenceKnown",
+			"explicitIngestionRate",
+			"explicitIngestionBurstSize",
+			"explicitIngestionBurstFactor",
+			"explicitNameValidationScheme",
+		),
 	}
 
 	require.Empty(t, cmp.Diff(expected, *loadedLimits["1234"], compareOptions...))
@@ -319,7 +327,15 @@ func getDefaultLimits() validation.Limits {
 func runtimeConfigCompareOptions() []cmp.Option {
 	return []cmp.Option{
 		cmp.AllowUnexported(validation.Limits{}),
-		cmpopts.IgnoreFields(validation.Limits{}, "activeSeriesMergedCustomTrackersConfig"),
+		cmpopts.IgnoreFields(
+			validation.Limits{},
+			"activeSeriesMergedCustomTrackersConfig",
+			"mergeFieldPresenceKnown",
+			"explicitIngestionRate",
+			"explicitIngestionBurstSize",
+			"explicitIngestionBurstFactor",
+			"explicitNameValidationScheme",
+		),
 	}
 }
 

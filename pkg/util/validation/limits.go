@@ -329,6 +329,15 @@ type Limits struct {
 	NameValidationScheme model.ValidationScheme `yaml:"name_validation_scheme" json:"name_validation_scheme" category:"experimental"`
 
 	extensions map[string]interface{}
+
+	// These flags track whether selected mergeable fields were explicitly set in the
+	// source config. They are used by mergeLimits to avoid applying inherited defaults
+	// from runtime config overlays that omit these fields.
+	mergeFieldPresenceKnown      bool
+	explicitIngestionRate        bool
+	explicitIngestionBurstSize   bool
+	explicitIngestionBurstFactor bool
+	explicitNameValidationScheme bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -539,23 +548,25 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (l *Limits) UnmarshalYAML(value *yaml.Node) error {
+	fieldPresence := mergeLimitsFieldPresenceFromYAML(value)
 	return l.unmarshal(func(v any) error {
 		return value.DecodeWithOptions(v, yaml.DecodeOptions{KnownFields: true})
-	})
+	}, fieldPresence)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (l *Limits) UnmarshalJSON(data []byte) error {
+	fieldPresence := mergeLimitsFieldPresenceFromJSON(data)
 	return l.unmarshal(func(v any) error {
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
 
 		return dec.Decode(v)
-	})
+	}, fieldPresence)
 }
 
 // unmarshal does both YAML and JSON.
-func (l *Limits) unmarshal(decode func(any) error) error {
+func (l *Limits) unmarshal(decode func(any) error, fieldPresence mergeLimitsFieldPresence) error {
 	// We want to set l to the defaults and then overwrite it with the input.
 	if defaultLimits != nil {
 		*l = *defaultLimits
@@ -571,6 +582,11 @@ func (l *Limits) unmarshal(decode func(any) error) error {
 		// Reset this param to be nil, since it is set during RegisterFlags.
 		l.OTelMetricSuffixesEnabled = nil
 	}
+	l.mergeFieldPresenceKnown = fieldPresence.known
+	l.explicitIngestionRate = fieldPresence.ingestionRate
+	l.explicitIngestionBurstSize = fieldPresence.ingestionBurstSize
+	l.explicitIngestionBurstFactor = fieldPresence.ingestionBurstFactor
+	l.explicitNameValidationScheme = fieldPresence.nameValidationScheme
 
 	// Decode into a reflection-crafted struct that has fields for the extensions.
 	cfg, getExtensions := newLimitsWithExtensions((*plainLimits)(l))
@@ -1690,7 +1706,8 @@ func (o *Overrides) getOverridesForUserWithMetadata(userID string) *Limits {
 }
 
 // mergeLimits merges overlay into dst in place. If dst is nil, a copy of
-// overlay is returned. Only non-zero fields from overlay are applied.
+// overlay is returned. If field-presence metadata is available, only explicitly
+// set fields are considered for merge.
 func mergeLimits(dst, overlay *Limits) *Limits {
 	if overlay == nil {
 		return dst
@@ -1701,21 +1718,39 @@ func mergeLimits(dst, overlay *Limits) *Limits {
 	if overlay.MaxActiveSeriesPerUser > 0 {
 		dst.MaxActiveSeriesPerUser = overlay.MaxActiveSeriesPerUser
 	}
-	if overlay.IngestionRate > 0 {
-		dst.IngestionRate = overlay.IngestionRate
-	}
-	if overlay.IngestionBurstSize > 0 {
-		dst.IngestionBurstSize = overlay.IngestionBurstSize
-	}
-	if overlay.IngestionBurstFactor > 0 {
-		dst.IngestionBurstFactor = overlay.IngestionBurstFactor
+	if overlay.mergeFieldPresenceKnown {
+		if overlay.explicitIngestionRate && overlay.IngestionRate > 0 {
+			dst.IngestionRate = overlay.IngestionRate
+		}
+		if overlay.explicitIngestionBurstSize && overlay.IngestionBurstSize > 0 {
+			dst.IngestionBurstSize = overlay.IngestionBurstSize
+		}
+		if overlay.explicitIngestionBurstFactor && overlay.IngestionBurstFactor > 0 {
+			dst.IngestionBurstFactor = overlay.IngestionBurstFactor
+		}
+	} else {
+		if overlay.IngestionRate > 0 {
+			dst.IngestionRate = overlay.IngestionRate
+		}
+		if overlay.IngestionBurstSize > 0 {
+			dst.IngestionBurstSize = overlay.IngestionBurstSize
+		}
+		if overlay.IngestionBurstFactor > 0 {
+			dst.IngestionBurstFactor = overlay.IngestionBurstFactor
+		}
 	}
 	if overlay.OTelMetricSuffixesEnabled != nil {
 		v := *overlay.OTelMetricSuffixesEnabled
 		dst.OTelMetricSuffixesEnabled = &v
 	}
-	if overlay.NameValidationScheme != model.UnsetValidation {
-		dst.NameValidationScheme = overlay.NameValidationScheme
+	if overlay.mergeFieldPresenceKnown {
+		if overlay.explicitNameValidationScheme && overlay.NameValidationScheme != model.UnsetValidation {
+			dst.NameValidationScheme = overlay.NameValidationScheme
+		}
+	} else {
+		if overlay.NameValidationScheme != model.UnsetValidation {
+			dst.NameValidationScheme = overlay.NameValidationScheme
+		}
 	}
 	if overlay.OTelTranslationStrategy != "" {
 		dst.OTelTranslationStrategy = overlay.OTelTranslationStrategy
@@ -1726,6 +1761,51 @@ func mergeLimits(dst, overlay *Limits) *Limits {
 func copyLimits(l *Limits) *Limits {
 	cp := *l
 	return &cp
+}
+
+type mergeLimitsFieldPresence struct {
+	known                bool
+	ingestionRate        bool
+	ingestionBurstSize   bool
+	ingestionBurstFactor bool
+	nameValidationScheme bool
+}
+
+func mergeLimitsFieldPresenceFromYAML(value *yaml.Node) mergeLimitsFieldPresence {
+	if value == nil || value.Kind != yaml.MappingNode {
+		return mergeLimitsFieldPresence{}
+	}
+
+	p := mergeLimitsFieldPresence{known: true}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		switch value.Content[i].Value {
+		case "ingestion_rate":
+			p.ingestionRate = true
+		case "ingestion_burst_size":
+			p.ingestionBurstSize = true
+		case "ingestion_burst_factor":
+			p.ingestionBurstFactor = true
+		case "name_validation_scheme":
+			p.nameValidationScheme = true
+		}
+	}
+
+	return p
+}
+
+func mergeLimitsFieldPresenceFromJSON(data []byte) mergeLimitsFieldPresence {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return mergeLimitsFieldPresence{}
+	}
+
+	p := mergeLimitsFieldPresence{known: true}
+	_, p.ingestionRate = fields["ingestion_rate"]
+	_, p.ingestionBurstSize = fields["ingestion_burst_size"]
+	_, p.ingestionBurstFactor = fields["ingestion_burst_factor"]
+	_, p.nameValidationScheme = fields["name_validation_scheme"]
+
+	return p
 }
 
 // AllTrueBooleansPerTenant returns true only if limit func is true for all given tenants

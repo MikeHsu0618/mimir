@@ -2672,6 +2672,63 @@ func TestGetOverridesForUserWithMetadata(t *testing.T) {
 	}
 }
 
+func TestGetOverridesForUserWithMetadata_DoesNotOverrideNameValidationSchemeWithInheritedDefault(t *testing.T) {
+	defaults := getDefaultLimits()
+	defaults.NameValidationScheme = model.LegacyValidation
+
+	SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	t.Cleanup(func() {
+		SetDefaultLimitsForYAMLUnmarshalling(getDefaultLimits())
+	})
+
+	const inputYAML = `
+"tenant-a":
+  name_validation_scheme: utf8
+"tenant-a:source=test-run":
+  max_active_series_per_user: 123
+`
+
+	tenantLimits := map[string]*Limits{}
+	require.NoError(t, yaml.Unmarshal([]byte(inputYAML), &tenantLimits))
+
+	ov := NewOverrides(defaults, NewMockTenantLimits(tenantLimits))
+	got := ov.getOverridesForUserWithMetadata("tenant-a:source=test-run")
+
+	assert.Equal(t, model.UTF8Validation, got.NameValidationScheme)
+	assert.Equal(t, model.UTF8Validation, ov.NameValidationScheme("tenant-a:source=test-run"))
+}
+
+func TestGetOverridesForUserWithMetadata_DoesNotOverrideIngestionFieldsWithInheritedDefaults(t *testing.T) {
+	defaults := getDefaultLimits()
+	defaults.IngestionRate = 10000
+	defaults.IngestionBurstSize = 200000
+	defaults.IngestionBurstFactor = 3
+
+	SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	t.Cleanup(func() {
+		SetDefaultLimitsForYAMLUnmarshalling(getDefaultLimits())
+	})
+
+	const inputYAML = `
+"tenant-a":
+  ingestion_rate: 150
+  ingestion_burst_size: 1500
+  ingestion_burst_factor: 1.5
+"tenant-a:source=test-run":
+  max_active_series_per_user: 123
+`
+
+	tenantLimits := map[string]*Limits{}
+	require.NoError(t, yaml.Unmarshal([]byte(inputYAML), &tenantLimits))
+
+	ov := NewOverrides(defaults, NewMockTenantLimits(tenantLimits))
+	got := ov.getOverridesForUserWithMetadata("tenant-a:source=test-run")
+
+	assert.Equal(t, 150.0, got.IngestionRate)
+	assert.Equal(t, 1500, got.IngestionBurstSize)
+	assert.Equal(t, 1.5, got.IngestionBurstFactor)
+}
+
 func TestMergeLimits(t *testing.T) {
 	tests := map[string]struct {
 		dst     *Limits
