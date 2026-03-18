@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
@@ -1945,6 +1946,51 @@ func TestHandler_otlpDroppedMetricsPanic2(t *testing.T) {
 	)
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, http.StatusBadRequest, resp.Code)
+}
+
+func TestOTLPHandler_UsesMetadataAwareNameValidationSchemeInPrePushValidation(t *testing.T) {
+	md := pmetric.NewMetrics()
+	metric := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	metric.SetName("métric")
+	metric.SetEmptyGauge()
+	point := metric.Gauge().DataPoints().AppendEmpty()
+	point.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+	point.SetDoubleValue(1)
+
+	req := createOTLPProtoRequest(t, pmetricotlp.NewExportRequestFromMetrics(md), "")
+
+	tenantMD := tenant.NewMetadata()
+	tenantMD.Set("source", "foo")
+	fullTenantID := tenantMD.WithTenant("test")
+	req.Header.Set("X-Scope-OrgID", fullTenantID)
+	req = req.WithContext(user.InjectOrgID(context.Background(), fullTenantID))
+
+	limits := validation.NewOverrides(
+		validation.Limits{},
+		validation.NewMockTenantLimits(map[string]*validation.Limits{
+			"test":       {NameValidationScheme: model.LegacyValidation, OTelMetricSuffixesEnabled: boolPtr(false)},
+			fullTenantID: {NameValidationScheme: model.UTF8Validation},
+		}),
+	)
+
+	pushCalled := false
+	handler := OTLPHandler(
+		100000, nil, nil, limits, nil, nil,
+		RetryConfig{}, nil, func(_ context.Context, pushReq *Request) error {
+			pushCalled = true
+			request, err := pushReq.WriteRequest()
+			require.NoError(t, err)
+			require.Len(t, request.Timeseries, 1)
+			pushReq.CleanUp()
+			return nil
+		}, nil, nil, log.NewNopLogger(),
+	)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+	require.True(t, pushCalled)
 }
 
 func TestHandler_otlpWriteRequestTooBigWithCompression(t *testing.T) {

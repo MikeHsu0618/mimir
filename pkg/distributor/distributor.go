@@ -1603,6 +1603,7 @@ func (d *Distributor) prePushValidationMiddleware(next PushFunc) PushFunc {
 		if err != nil {
 			return err
 		}
+		fullTenantIDForValidation := md.WithTenant(userID)
 
 		now := mtime.Now()
 		d.receivedRequests.WithLabelValues(userID).Add(1)
@@ -1610,6 +1611,7 @@ func (d *Distributor) prePushValidationMiddleware(next PushFunc) PushFunc {
 
 		pushReq.group = d.activeGroups.UpdateActiveGroupTimestamp(userID, validation.GroupLabel(d.limits, userID, req.Timeseries), now)
 		cfg := newValidationConfig(userID, d.limits)
+		cfg.labels.nameValidationScheme = d.limits.NameValidationScheme(fullTenantIDForValidation)
 
 		// A WriteRequest can only contain series or metadata but not both. This might change in the future.
 		validatedMetadata := 0

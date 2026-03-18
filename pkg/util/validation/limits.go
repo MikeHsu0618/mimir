@@ -1575,14 +1575,27 @@ func (o *Overrides) OTelNativeDeltaIngestion(tenantID string) bool {
 }
 
 func (o *Overrides) OTelTranslationStrategy(tenantID string) otlptranslator.TranslationStrategyOption {
-	strategy := otlptranslator.TranslationStrategyOption(o.getOverridesForUserWithMetadata(tenantID).OTelTranslationStrategy)
+	limits := o.getOverridesForUserWithMetadata(tenantID)
+
+	strategy := otlptranslator.TranslationStrategyOption(limits.OTelTranslationStrategy)
 	if strategy != "" {
 		return strategy
 	}
 
 	// Generate translation strategy based on other settings.
-	suffixesEnabled := o.OTelMetricSuffixesEnabled(tenantID)
-	switch scheme := o.NameValidationScheme(tenantID); scheme {
+	suffixesEnabled := false
+	if v := limits.OTelMetricSuffixesEnabled; v != nil {
+		suffixesEnabled = *v
+	} else if v := o.defaultLimits.OTelMetricSuffixesEnabled; v != nil {
+		suffixesEnabled = *v
+	}
+
+	scheme := limits.NameValidationScheme
+	if scheme == model.UnsetValidation {
+		scheme = model.LegacyValidation
+	}
+
+	switch scheme {
 	case model.LegacyValidation:
 		if suffixesEnabled {
 			strategy = otlptranslator.UnderscoreEscapingWithSuffixes
