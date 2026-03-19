@@ -1771,8 +1771,9 @@ func (d *Distributor) prePushValidationMiddleware(next PushFunc) PushFunc {
 			return firstPartialErr
 		}
 
+		rateLimiterKey := d.limits.IngestionRateLimiterKey(fullTenantID)
 		totalN := validatedSamples + validatedExemplars + validatedMetadata
-		if !d.ingestionRateLimiter.AllowN(now, fullTenantID, totalN) {
+		if !d.ingestionRateLimiter.AllowN(now, rateLimiterKey, totalN) {
 			if len(req.Timeseries) > 0 {
 				d.costAttributionMgr.SampleTracker(userID).IncrementDiscardedSamples(req.Timeseries[0].Labels, float64(validatedSamples), reasonRateLimited, now)
 			}
@@ -1781,7 +1782,7 @@ func (d *Distributor) prePushValidationMiddleware(next PushFunc) PushFunc {
 			d.discardedMetadataRateLimited.WithLabelValues(userID).Add(float64(validatedMetadata))
 
 			// Determine whether limiter burst size was exceeded.
-			limiterBurst := d.ingestionRateLimiter.Burst(now, fullTenantID)
+			limiterBurst := d.ingestionRateLimiter.Burst(now, rateLimiterKey)
 			if totalN > limiterBurst {
 				return newIngestionBurstSizeLimitedError(limiterBurst, totalN)
 			}

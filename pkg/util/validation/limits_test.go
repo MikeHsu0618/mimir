@@ -2672,6 +2672,85 @@ func TestGetOverridesForUserWithMetadata(t *testing.T) {
 	}
 }
 
+func TestIngestionRateLimiterKey(t *testing.T) {
+	tests := map[string]struct {
+		tenantLimits map[string]*Limits
+		userID       string
+		expectedKey  string
+	}{
+		"plain tenant ID": {
+			tenantLimits: map[string]*Limits{
+				"tenant-a": {IngestionRate: 100},
+			},
+			userID:      "tenant-a",
+			expectedKey: "tenant-a",
+		},
+		"unmatched dynamic metadata collapses to tenant ID": {
+			tenantLimits: map[string]*Limits{
+				"tenant-a":                 {IngestionRate: 100},
+				"tenant-a:source=test-run": {IngestionRate: 200},
+			},
+			userID:      "tenant-a:run-id=abc123:source=load-test",
+			expectedKey: "tenant-a",
+		},
+		"matched metadata key retained in limiter key": {
+			tenantLimits: map[string]*Limits{
+				"tenant-a":                 {IngestionRate: 100},
+				"tenant-a:source=test-run": {IngestionRate: 200},
+			},
+			userID:      "tenant-a:run-id=abc123:source=test-run",
+			expectedKey: "tenant-a:source=test-run",
+		},
+		"global metadata override retained in limiter key": {
+			tenantLimits: map[string]*Limits{
+				":source=test-run": {IngestionRate: 9000},
+			},
+			userID:      "tenant-a:run-id=abc123:source=test-run",
+			expectedKey: "tenant-a:source=test-run",
+		},
+		"multiple matched metadata keys are retained": {
+			tenantLimits: map[string]*Limits{
+				"tenant-a:env=prod":        {IngestionRate: 1000},
+				"tenant-a:source=test-run": {IngestionRate: 200},
+			},
+			userID:      "tenant-a:env=prod:run-id=abc123:source=test-run",
+			expectedKey: "tenant-a:env=prod:source=test-run",
+		},
+		"full metadata match keeps full tenant key": {
+			tenantLimits: map[string]*Limits{
+				"tenant-a:run-id=abc123:source=test-run": {IngestionRate: 300},
+			},
+			userID:      "tenant-a:run-id=abc123:source=test-run",
+			expectedKey: "tenant-a:run-id=abc123:source=test-run",
+		},
+		"invalid metadata falls back to trimmed tenant ID": {
+			tenantLimits: map[string]*Limits{
+				"tenant-a": {IngestionRate: 100},
+			},
+			userID:      "tenant-a:invalid-metadata",
+			expectedKey: "tenant-a",
+		},
+		"nil tenant limits collapse to tenant ID": {
+			userID:      "tenant-a:run-id=abc123:source=test-run",
+			expectedKey: "tenant-a",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			defaults := getDefaultLimits()
+
+			var tl TenantLimits
+			if tc.tenantLimits != nil {
+				tl = NewMockTenantLimits(tc.tenantLimits)
+			}
+			ov := NewOverrides(defaults, tl)
+
+			assert.Equal(t, tc.expectedKey, ov.IngestionRateLimiterKey(tc.userID))
+		})
+	}
+}
+
 func TestMergeLimits(t *testing.T) {
 	tests := map[string]struct {
 		dst     *Limits

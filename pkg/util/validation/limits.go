@@ -788,6 +788,43 @@ func (o *Overrides) IngestionRate(userID string) float64 {
 	return o.getOverridesForUserWithMetadata(userID).IngestionRate
 }
 
+// IngestionRateLimiterKey returns the stable key that should be used by the
+// ingestion rate limiter for this userID.
+//
+// For metadata tenants, this key includes only metadata key/value pairs that
+// have matching tenant limit entries (plus full metadata matches), which avoids
+// creating unbounded limiter entries for unrelated dynamic metadata values.
+func (o *Overrides) IngestionRateLimiterKey(userID string) string {
+	tenantID := trimMetadataSuffix(userID)
+	if o.tenantLimits == nil {
+		return tenantID
+	}
+
+	parsedTenantID, tenantMd, err := tenant.ParseWithMetadata(userID)
+	if err != nil || parsedTenantID == userID {
+		return tenantID
+	}
+
+	// Full metadata match should retain a dedicated limiter key.
+	if o.tenantLimits.ByUserID(userID) != nil {
+		return userID
+	}
+
+	matchedMetadata := tenant.NewMetadata()
+	tmpMd := tenant.NewMetadata()
+	for key, val := range tenantMd.Iter() {
+		tmpMd.Set(key, val)
+		full := tmpMd.WithTenant(parsedTenantID)
+		suffix := full[len(parsedTenantID):]
+		if o.tenantLimits.ByUserID(suffix) != nil || o.tenantLimits.ByUserID(full) != nil {
+			matchedMetadata.Set(key, val)
+		}
+		tmpMd.Remove(key)
+	}
+
+	return matchedMetadata.WithTenant(parsedTenantID)
+}
+
 // LabelNamesAndValuesResultsMaxSizeBytes returns the maximum size in bytes of distinct label names and values
 func (o *Overrides) LabelNamesAndValuesResultsMaxSizeBytes(userID string) int {
 	return o.getOverridesForUser(userID).LabelNamesAndValuesResultsMaxSizeBytes
