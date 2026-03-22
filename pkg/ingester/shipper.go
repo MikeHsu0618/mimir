@@ -241,16 +241,17 @@ func listBlocks(dir string) iter.Seq2[ulid.ULID, error] {
 				continue
 			}
 
-			blockDir := filepath.Join(dir, id.String())
-			fi, err := os.Stat(blockDir)
-			if err != nil {
-				if !yield(ulid.Zero, fmt.Errorf("stat block %s: %w", blockDir, err)) {
-					return
-				}
+		blockDir := filepath.Join(dir, id.String())
+		fi, err := os.Stat(blockDir)
+		if err != nil {
+			if !yield(ulid.Zero, fmt.Errorf("stat block %s: %w", blockDir, err)) {
+				return
 			}
-			if !fi.IsDir() {
-				continue
-			}
+			continue
+		}
+		if !fi.IsDir() {
+			continue
+		}
 			if !yield(id, nil) {
 				return
 			}
