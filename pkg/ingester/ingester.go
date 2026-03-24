@@ -380,6 +380,7 @@ type Ingester struct {
 	ingestReader              *ingest.PartitionReader
 	ingestPartitionID         int32
 	ingestPartitionLifecycler *ring.PartitionInstanceLifecycler
+	committedOffsetClient     *ingest.CommittedOffsetClient
 
 	// latestKafkaRecordTimestamp tracks the most recent Kafka record timestamp
 	// seen by the ingester (unix milliseconds). Used to provide a Kafka-time-aware
@@ -648,6 +649,15 @@ func New(cfg Config, limits *validation.Overrides, ingestersRing ring.ReadRing, 
 		if !cfg.IngestStorageConfig.Enabled {
 			return nil, fmt.Errorf("kafka offset catalogue can only be enabled when ingest storage is enabled")
 		}
+
+		if consumerGroup := cfg.BlocksStorageConfig.TSDB.OffsetCatalogue.ConsumerGroup; consumerGroup != "" {
+			kafkaCfg := cfg.IngestStorageConfig.KafkaConfig
+			cl, err := ingest.NewKafkaReaderClient(kafkaCfg, nil, log.With(logger, "component", "committed-offset-client"))
+			if err != nil {
+				return nil, fmt.Errorf("creating kafka client for committed offset reader: %w", err)
+			}
+			i.committedOffsetClient = ingest.NewCommittedOffsetClient(cl, kafkaCfg.Topic)
+		}
 	}
 
 	i.BasicService = services.NewBasicService(i.starting, i.ingesterRunning, i.stopping).WithName("ingester")
@@ -785,6 +795,12 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 
 	if i.ingestPartitionLifecycler != nil {
 		servs = append(servs, i.ingestPartitionLifecycler)
+	}
+
+	if i.committedOffsetClient != nil {
+		interval := i.cfg.BlocksStorageConfig.TSDB.OffsetCatalogue.ConsumerGroupPollInterval
+		committedOffsetService := services.NewTimerService(interval, nil, i.updateCommittedOffset, nil)
+		servs = append(servs, committedOffsetService)
 	}
 
 	// Since subservices are conditional, We add an idle service if there are no subservices to
@@ -2873,6 +2889,7 @@ func (i *Ingester) createTSDB(userID string, walReplayConcurrency int) (*userTSD
 		},
 	}
 	userDB.triggerRecomputeOwnedSeries(recomputeOwnedSeriesReasonNewUser)
+	userDB.committedOffset.Store(-1)
 
 	if i.cfg.BlocksStorageConfig.TSDB.IndexLookupPlanning.Enabled {
 		plannerFactory := lookupplan.NewPlannerFactory(i.lookupPlanMetrics.ForUser(userID), userLogger, lookupplan.NewStatisticsGenerator(userLogger), i.cfg.BlocksStorageConfig.TSDB.IndexLookupPlanning.CostConfig)
@@ -3860,6 +3877,28 @@ func (i *Ingester) offsetCataloguesSync(ctx context.Context) {
 
 		return nil
 	})
+}
+
+func (i *Ingester) updateCommittedOffset(ctx context.Context) error {
+	consumerGroup := i.cfg.BlocksStorageConfig.TSDB.OffsetCatalogue.ConsumerGroup
+	offset, exists, err := i.committedOffsetClient.FetchLastCommittedOffset(ctx, consumerGroup, i.ingestPartitionID)
+	if err != nil {
+		level.Warn(i.logger).Log("msg", "failed to fetch committed offset", "consumer_group", consumerGroup, "partition", i.ingestPartitionID, "err", err)
+		return nil
+	}
+	if !exists {
+		return nil
+	}
+
+	level.Info(i.logger).Log("msg", "updating commited offset", "consumer_group", consumerGroup, "partition", i.ingestPartitionID, "offset", offset)
+
+	i.tsdbsMtx.RLock()
+	defer i.tsdbsMtx.RUnlock()
+
+	for _, db := range i.tsdbs {
+		db.committedOffset.Store(offset)
+	}
+	return nil
 }
 
 func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
