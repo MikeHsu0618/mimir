@@ -194,3 +194,19 @@ func CombineStats[T StatsProvider](ctx context.Context, operators ...T) (*Operat
 type StatsProvider interface {
 	Stats(context.Context) (*OperatorEvaluationStats, error)
 }
+
+func (s *OperatorEvaluationStats) GetSamplesProcessed() (int64, []int64) {
+	return sum(s.samplesProcessedPerStep), s.samplesProcessedPerStep
+}
+
+func (s *OperatorEvaluationStats) GetSamplesRead() (int64, []int64) {
+	return sum(s.newSamplesReadPerStep), s.newSamplesReadPerStep
+}
+
+func sum(s []int64) int64 {
+	var sum int64
+	for _, v := range s {
+		sum += v
+	}
+	return sum
+}
