@@ -200,6 +200,56 @@ func TestDistributor_Push_ShouldEnforceMaxSeriesLimits(t *testing.T) {
 	}
 }
 
+func TestDistributor_Push_ShouldReturnHardErrorIfAllTimeseriesEntriesAreRejected(t *testing.T) {
+	const userID = "user-1"
+
+	now := time.Now()
+	req := &mimirpb.WriteRequest{
+		Timeseries: []mimirpb.PreallocTimeseries{
+			makeTimeseries([]string{model.MetricNameLabel, "series_1"}, makeSamples(now.UnixMilli(), 1), nil, nil),
+			// Duplicate series labels generate the same hash.
+			makeTimeseries([]string{model.MetricNameLabel, "series_1"}, makeSamples(now.UnixMilli(), 2), nil, nil),
+		},
+	}
+
+	rejectedHash := labels.StableHash(mimirpb.FromLabelAdaptersToLabels(req.Timeseries[0].Labels))
+
+	testConfig := prepConfig{
+		numDistributors:         1,
+		ingestStorageEnabled:    true,
+		ingestStoragePartitions: 1,
+		limits:                  prepareDefaultLimits(),
+		configure: func(cfg *Config) {
+			cfg.IngestStorageConfig.KafkaConfig.WriteClients = 3
+		},
+	}
+
+	distributors, _, _, kafkaCluster := prepare(t, testConfig)
+	require.Len(t, distributors, 1)
+
+	usageTracker := &usageTrackerClientMock{}
+	usageTracker.On("CanTrackAsync", userID).Return(false)
+	usageTracker.On("TrackSeries", mock.Anything, userID, mock.Anything).Return([]uint64{rejectedHash}, nil)
+
+	distributors[0].cfg.UsageTrackerEnabled = true
+	distributors[0].usageTrackerClient = usageTracker
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	res, err := distributors[0].Push(ctx, req)
+	require.Nil(t, res)
+	require.Error(t, err)
+
+	st, ok := grpcutil.ErrorToStatus(err)
+	require.True(t, ok, "Expected error to be a gRPC status error")
+	require.Equal(t, codes.ResourceExhausted, st.Code())
+	require.Contains(t, st.Message(), "2 series were rejected from this request of a total of 2")
+
+	usageTracker.AssertCalled(t, "TrackSeries", mock.Anything, userID, []uint64{rejectedHash, rejectedHash})
+
+	actualSeriesByPartition := readAllMetricNamesByPartitionFromKafka(t, kafkaCluster.ListenAddrs(), testConfig.ingestStoragePartitions, time.Second)
+	require.Empty(t, actualSeriesByPartition)
+}
+
 func BenchmarkDistributor_prePushMaxSeriesLimitMiddleware(b *testing.B) {
 	var (
 		now                 = time.Now()
