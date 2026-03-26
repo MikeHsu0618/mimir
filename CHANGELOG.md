@@ -156,8 +156,7 @@
 * [ENHANCEMENT] Usage-tracker: Improve performance of TrackSeriesBatch by preprocessing input data. #14702 #14734
 * [ENHANCEMENT] MQE: Improve per-query memory consumption limit enforcement in histogram function evaluations. #14691
 * [ENHANCEMENT] Usage-tracker: Improve performance by using a special shard grouping algorithm. #14715
-* [ENHANCEMENT] Distributor: OTLP endpoint now returns partial success (HTTP 200) instead of HTTP 429 when the usage tracker rejects some series due to the active series limit but other series are successfully ingested. The `RejectedDataPoints` field reports the accurate count of rejected samples and histograms. #14789
-* [BUGFIX] Distributor: OTLP partial success responses now correctly populate `RejectedDataPoints` with the actual count of rejected samples propagated from the ingester, instead of always reporting 0. #14789
+* [BUGFIX] Distributor: OTLP partial success responses now correctly populate `RejectedDataPoints` with the actual count of rejected samples, instead of always reporting 0. When the usage tracker rejects some series due to the active series limit but other series are successfully ingested, the OTLP endpoint now returns partial success (HTTP 200) instead of HTTP 429. #14789
 * [BUGFIX] Distributor: Fix race condition where usage-tracker partition ring may not be initialized before the distributor service starts, causing `usage-tracker partition ring is required` error on startup. #14675
 * [BUGFIX] Mimir: Fix false positive in filesystem path overlap detection when one path is a string prefix of another but not an ancestor directory. #14426
 * [BUGFIX] Build: Fixed config descriptor generation to correctly handle custom field types without CLI flags. #14632
