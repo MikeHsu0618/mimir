@@ -90,6 +90,8 @@ const (
 	maxInfluxRequestSizeFlag = "distributor.max-influx-request-size"
 
 	instanceIngestionRateTickInterval = time.Second
+	ingestionRateLimiterCleanupInterval = 3 * time.Minute
+	ingestionRateLimiterEntryTimeout    = 24 * time.Hour
 
 	// Size of "slab" when using pooled buffers for marshaling write requests. When handling single Push request
 	// buffers for multiple write requests sent to ingesters will be allocated from single "slab", if there is enough space.
@@ -854,7 +856,9 @@ func (d *Distributor) starting(ctx context.Context) error {
 
 func (d *Distributor) running(ctx context.Context) error {
 	ingestionRateTicker := time.NewTicker(instanceIngestionRateTickInterval)
+	ingestionRateLimiterCleanupTicker := time.NewTicker(ingestionRateLimiterCleanupInterval)
 	defer ingestionRateTicker.Stop()
+	defer ingestionRateLimiterCleanupTicker.Stop()
 
 	for {
 		select {
@@ -864,6 +868,9 @@ func (d *Distributor) running(ctx context.Context) error {
 		case <-ingestionRateTicker.C:
 			d.ingestionRate.Tick()
 
+		case <-ingestionRateLimiterCleanupTicker.C:
+			d.ingestionRateLimiter.RemoveStaleEntries(time.Now().Add(-ingestionRateLimiterEntryTimeout))
+
 		case err := <-d.subservicesWatcher.Chan():
 			return errors.Wrap(err, "distributor subservice failed")
 		}
@@ -871,7 +878,6 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 func (d *Distributor) cleanupInactiveUser(userID string) {
-	d.ingestionRateLimiter.RemoveStaleEntries(time.Now().Add(-24 * time.Hour))
 	d.ingestersRing.CleanupShuffleShardCache(userID)
 
 	d.HATracker.cleanupHATrackerMetricsForUser(userID)
