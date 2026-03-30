@@ -268,16 +268,16 @@ local filename = 'mimir-writes.json';
         $.timeseriesPanel(title) +
         $.qpsPanelNativeHistogram($.queries.usage_tracker.clientRequestsPerSecondMetric, $.namespaceMatcher()) +
         {
-          // Prefix sync target legends with "Sync " and append async targets.
-          targets: [
-            t { legendFormat: 'Sync ' + t.legendFormat }
-            for t in super.targets
-          ] + [
+          // Keep sync legends unchanged so status-code color overrides keep matching.
+          targets: super.targets + [
             {
               expr: |||
                 sum(rate(cortex_distributor_async_usage_tracker_calls_total{%s}[$__rate_interval]))
                 -
-                sum(rate(cortex_distributor_async_usage_tracker_calls_with_rejected_series_total{%s}[$__rate_interval]))
+                (
+                  sum(rate(cortex_distributor_async_usage_tracker_calls_with_rejected_series_total{%s}[$__rate_interval]))
+                  or vector(0)
+                )
               ||| % [asyncJobMatcher, asyncJobMatcher],
               format: 'time_series',
               legendFormat: 'Async',
