@@ -2788,6 +2788,29 @@ func TestGetOverridesForUserWithMetadata(t *testing.T) {
 	}
 }
 
+func TestGetOverridesForLimitsKey_DerivesOTelTranslationStrategyAfterMetadataOverride(t *testing.T) {
+	tenantLimits := map[string]*Limits{
+		"tenant-a": {
+			NameValidationScheme:      model.LegacyValidation,
+			OTelMetricSuffixesEnabled: boolPtr(true),
+			OTelTranslationStrategy:   OTelTranslationStrategyValue(otlptranslator.UnderscoreEscapingWithSuffixes),
+		},
+		"tenant-a:source=test-run": {
+			OTelMetricSuffixesEnabled: boolPtr(false),
+		},
+	}
+
+	ov := NewOverrides(getDefaultLimits(), NewMockTenantLimits(tenantLimits))
+	limitsKey := "tenant-a:source=test-run"
+
+	merged := ov.getOverridesForLimitsKey(limitsKey)
+	assert.Equal(t, OTelTranslationStrategyValue(""), merged.OTelTranslationStrategy)
+
+	require.NotPanics(t, func() {
+		assert.Equal(t, otlptranslator.UnderscoreEscapingWithoutSuffixes, ov.OTelTranslationStrategy(limitsKey))
+	})
+}
+
 func TestMergeLimits(t *testing.T) {
 	tests := map[string]struct {
 		dst     *Limits

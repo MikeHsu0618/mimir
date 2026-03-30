@@ -1715,6 +1715,11 @@ func mergeLimits(dst, overlay *Limits) *Limits {
 	if dst == nil {
 		return copyLimits(overlay)
 	}
+
+	overrideOTelMetricSuffixesEnabled := overlay.OTelMetricSuffixesEnabled != nil
+	overrideNameValidationScheme := overlay.NameValidationScheme != model.UnsetValidation
+	overrideOTelTranslationStrategy := overlay.OTelTranslationStrategy != ""
+
 	if overlay.MaxActiveSeriesPerUser > 0 {
 		dst.MaxActiveSeriesPerUser = overlay.MaxActiveSeriesPerUser
 	}
@@ -1727,15 +1732,18 @@ func mergeLimits(dst, overlay *Limits) *Limits {
 	if overlay.IngestionBurstFactor > 0 {
 		dst.IngestionBurstFactor = overlay.IngestionBurstFactor
 	}
-	if overlay.OTelMetricSuffixesEnabled != nil {
+	if overrideOTelMetricSuffixesEnabled {
 		v := *overlay.OTelMetricSuffixesEnabled
 		dst.OTelMetricSuffixesEnabled = &v
 	}
-	if overlay.NameValidationScheme != model.UnsetValidation {
+	if overrideNameValidationScheme {
 		dst.NameValidationScheme = overlay.NameValidationScheme
 	}
-	if overlay.OTelTranslationStrategy != "" {
+	if overrideOTelTranslationStrategy {
 		dst.OTelTranslationStrategy = overlay.OTelTranslationStrategy
+	} else if overrideOTelMetricSuffixesEnabled || overrideNameValidationScheme {
+		// Clear inherited explicit strategy if only inputs used to derive it were overridden.
+		dst.OTelTranslationStrategy = ""
 	}
 	return dst
 }
