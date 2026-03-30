@@ -2564,6 +2564,7 @@ func TestOverridesWithMetadata(t *testing.T) {
 	defaults.MaxActiveSeriesPerUser = 10000
 	defaults.IngestionBurstSize = 100000
 	defaults.IngestionBurstFactor = 1.5
+	defaults.NameValidationScheme = model.UTF8Validation
 
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
@@ -2627,6 +2628,14 @@ func TestOverridesWithMetadata(t *testing.T) {
 		assert.True(t, ov.OTelMetricSuffixesEnabled("tenant-a:run-id=unknown:source=test-run"))
 		assert.True(t, ov.OTelMetricSuffixesEnabled("tenant-a:run-id=specific:source=test-run"))
 		assert.False(t, ov.OTelMetricSuffixesEnabled("unknown-tenant"))
+	})
+
+	t.Run("NameValidationScheme", func(t *testing.T) {
+		assert.Equal(t, model.UTF8Validation, ov.NameValidationScheme("tenant-a"))
+		assert.Equal(t, model.UTF8Validation, ov.NameValidationScheme("tenant-a:source=test-run"))
+		assert.Equal(t, model.UTF8Validation, ov.NameValidationScheme("tenant-a:run-id=unknown:source=test-run"))
+		assert.Equal(t, model.UTF8Validation, ov.NameValidationScheme("tenant-a:run-id=specific:source=test-run"))
+		assert.Equal(t, model.UTF8Validation, ov.NameValidationScheme("unknown-tenant"))
 	})
 }
 

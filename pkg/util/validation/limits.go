@@ -1655,10 +1655,16 @@ func (o *Overrides) LabelsQueryOptimizerEnabled(userID string) bool {
 // NameValidationScheme returns the name validation scheme to use for a particular tenant.
 func (o *Overrides) NameValidationScheme(limitsKey string) model.ValidationScheme {
 	scheme := o.getOverridesForLimitsKey(limitsKey).NameValidationScheme
-	if scheme == model.UnsetValidation {
-		return model.LegacyValidation
+	if scheme != model.UnsetValidation {
+		return scheme
 	}
-	return scheme
+
+	scheme = o.defaultLimits.NameValidationScheme
+	if scheme != model.UnsetValidation {
+		return scheme
+	}
+
+	return model.LegacyValidation
 }
 
 // CardinalityAnalysisMaxResults returns the maximum number of results that
