@@ -606,14 +606,27 @@ func (l *Limits) MarshalYAML() (interface{}, error) {
 
 // Validate the Limits.
 func (l *Limits) Validate() error {
-	validationScheme := model.LegacyValidation
-	switch l.NameValidationScheme {
+	validationScheme := l.NameValidationScheme
+	if validationScheme == model.UnsetValidation {
+		if defaultLimits != nil && defaultLimits.NameValidationScheme != model.UnsetValidation {
+			validationScheme = defaultLimits.NameValidationScheme
+		} else {
+			validationScheme = model.LegacyValidation
+		}
+	}
+	switch validationScheme {
 	case model.UTF8Validation, model.LegacyValidation:
-		validationScheme = l.NameValidationScheme
-	case model.UnsetValidation:
-		// Do nothing.
+		// Nothing to do.
 	default:
 		return fmt.Errorf("unrecognized name validation scheme: %s", l.NameValidationScheme)
+	}
+
+	suffixesEnabled := false
+	switch {
+	case l.OTelMetricSuffixesEnabled != nil:
+		suffixesEnabled = *l.OTelMetricSuffixesEnabled
+	case defaultLimits != nil && defaultLimits.OTelMetricSuffixesEnabled != nil:
+		suffixesEnabled = *defaultLimits.OTelMetricSuffixesEnabled
 	}
 
 	switch otlptranslator.TranslationStrategyOption(l.OTelTranslationStrategy) {
@@ -624,7 +637,7 @@ func (l *Limits) Validate() error {
 				l.OTelTranslationStrategy, model.LegacyValidation,
 			)
 		}
-		if l.OTelMetricSuffixesEnabled != nil && *l.OTelMetricSuffixesEnabled {
+		if suffixesEnabled {
 			return fmt.Errorf("OTLP translation strategy %s is not allowed unless metric suffixes are disabled", l.OTelTranslationStrategy)
 		}
 	case otlptranslator.UnderscoreEscapingWithSuffixes:
@@ -634,7 +647,7 @@ func (l *Limits) Validate() error {
 				l.OTelTranslationStrategy, model.LegacyValidation,
 			)
 		}
-		if l.OTelMetricSuffixesEnabled == nil || !*l.OTelMetricSuffixesEnabled {
+		if !suffixesEnabled {
 			return fmt.Errorf("OTLP translation strategy %s is not allowed unless metric suffixes are enabled", l.OTelTranslationStrategy)
 		}
 	case otlptranslator.NoUTF8EscapingWithSuffixes:
@@ -644,7 +657,7 @@ func (l *Limits) Validate() error {
 				l.OTelTranslationStrategy, model.UTF8Validation,
 			)
 		}
-		if l.OTelMetricSuffixesEnabled == nil || !*l.OTelMetricSuffixesEnabled {
+		if !suffixesEnabled {
 			return fmt.Errorf("OTLP translation strategy %s is not allowed unless metric suffixes are enabled", l.OTelTranslationStrategy)
 		}
 	case otlptranslator.NoTranslation:
@@ -654,7 +667,7 @@ func (l *Limits) Validate() error {
 				l.OTelTranslationStrategy, model.UTF8Validation,
 			)
 		}
-		if l.OTelMetricSuffixesEnabled != nil && *l.OTelMetricSuffixesEnabled {
+		if suffixesEnabled {
 			return fmt.Errorf("OTLP translation strategy %s is not allowed unless metric suffixes are disabled", l.OTelTranslationStrategy)
 		}
 	case "":

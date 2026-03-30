@@ -1910,6 +1910,41 @@ func TestLimits_Validate(t *testing.T) {
 	}
 }
 
+func TestLimits_Validate_UsesResolvedDefaultsForUnsetOTelConfig(t *testing.T) {
+	// Reset default limits at the end of the test.
+	t.Cleanup(func() {
+		SetDefaultLimitsForYAMLUnmarshalling(getDefaultLimits())
+	})
+
+	t.Run("uses default metric suffixes setting when unset", func(t *testing.T) {
+		defaults := getDefaultLimits()
+		defaults.OTelMetricSuffixesEnabled = boolPtr(true)
+		SetDefaultLimitsForYAMLUnmarshalling(defaults)
+
+		cfg := Limits{}
+		flagext.DefaultValues(&cfg)
+		cfg.OTelMetricSuffixesEnabled = nil
+		cfg.OTelTranslationStrategy = OTelTranslationStrategyValue(otlptranslator.UnderscoreEscapingWithoutSuffixes)
+
+		require.EqualError(t, cfg.Validate(), "OTLP translation strategy UnderscoreEscapingWithoutSuffixes is not allowed unless metric suffixes are disabled")
+	})
+
+	t.Run("uses default name validation scheme when unset", func(t *testing.T) {
+		defaults := getDefaultLimits()
+		defaults.NameValidationScheme = model.UTF8Validation
+		defaults.OTelMetricSuffixesEnabled = boolPtr(false)
+		SetDefaultLimitsForYAMLUnmarshalling(defaults)
+
+		cfg := Limits{}
+		flagext.DefaultValues(&cfg)
+		cfg.NameValidationScheme = model.UnsetValidation
+		cfg.OTelMetricSuffixesEnabled = nil
+		cfg.OTelTranslationStrategy = OTelTranslationStrategyValue(otlptranslator.UnderscoreEscapingWithoutSuffixes)
+
+		require.EqualError(t, cfg.Validate(), "OTLP translation strategy UnderscoreEscapingWithoutSuffixes is not allowed unless validation scheme is legacy")
+	})
+}
+
 func TestLimits_ValidateMaxActiveSeriesAdditionalCustomTrackers(t *testing.T) {
 	t.Parallel()
 
