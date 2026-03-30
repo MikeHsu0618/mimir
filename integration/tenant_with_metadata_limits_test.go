@@ -188,6 +188,7 @@ overrides:
 	})
 
 	t.Run("unknown source uses default tenant limit", func(t *testing.T) {
+		md := tenant.NewMetadata()
 		md.Set(metadataKeySource, "unknown-src")
 		md.Set(testRunKey, knownTestID)
 		orgID := md.WithTenant(mainTenantID)
@@ -200,6 +201,7 @@ overrides:
 	})
 
 	t.Run("unknown test ID uses default test-run limit", func(t *testing.T) {
+		md := tenant.NewMetadata()
 		md.Set(metadataKeySource, testSource)
 		md.Set(testRunKey, "unknown-789")
 		orgID := md.WithTenant(mainTenantID)
@@ -212,6 +214,7 @@ overrides:
 	})
 
 	t.Run("known test ID uses exact specified limit", func(t *testing.T) {
+		md := tenant.NewMetadata()
 		md.Set(metadataKeySource, testSource)
 		md.Set(testRunKey, knownTestID)
 		orgID := md.WithTenant(mainTenantID)
