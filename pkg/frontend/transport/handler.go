@@ -262,16 +262,30 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		parts = getQueryStats(queryResponseTime, queryDetails)
 	}
 	if queryStatsHeaderNameOk {
-		parts = append(parts, getResponseQueryStats(queryResponseTime, resp.ContentLength, queryDetails)...)
+		// Exclude encode_time_seconds from the initial header; it will be added as a trailer
+		// after streaming completes so it reflects the actual encode duration.
+		parts = append(parts, getResponseQueryStats(queryResponseTime, resp.ContentLength, queryDetails, false)...)
 	}
 
 	if len(parts) > 0 {
 		hs.Set(ServiceTimingHeaderName, strings.Join(parts, ", "))
 	}
 
+	// If the caller requested response query stats, declare Server-Timing as a trailer so we can
+	// append the final encode_time_seconds after the body has been fully written.
+	if queryStatsHeaderNameOk {
+		hs.Add("Trailer", ServiceTimingHeaderName)
+	}
+
 	w.WriteHeader(resp.StatusCode)
 	// we don't check for copy error as there is no much we can do at this point
 	queryResponseSize, _ := io.Copy(w, resp.Body)
+
+	// Add encode_time_seconds to the Server-Timing trailer once encoding has completed.
+	if queryStatsHeaderNameOk && queryDetails != nil {
+		encodeTime := queryDetails.QuerierStats.LoadEncodeTime().Seconds()
+		w.Header().Add(ServiceTimingHeaderName, statsValue(encodeTimeSeconds, encodeTime))
+	}
 
 	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
 		f.reportSlowQuery(r, params, queryResponseTime, queryDetails)
@@ -528,7 +542,8 @@ func getQueryStats(queryResponseTime time.Duration, details *querymiddleware.Que
 // getResponseQueryStats returns the response query stats in the format of Server-Timing header.
 // contentLengthBytes must be the http.Response.ContentLength field value; -1 means unknown (streaming response).
 // For streaming responses the size is reported as 0 to preserve backward compatibility.
-func getResponseQueryStats(queryResponseTime time.Duration, contentLengthBytes int64, details *querymiddleware.QueryDetails) []string {
+// When includeEncodeTime is false, the encode_time_seconds metric is omitted (useful when it will be sent as a trailer).
+func getResponseQueryStats(queryResponseTime time.Duration, contentLengthBytes int64, details *querymiddleware.QueryDetails, includeEncodeTime bool) []string {
 	if details == nil {
 		return nil
 	}
@@ -537,8 +552,11 @@ func getResponseQueryStats(queryResponseTime time.Duration, contentLengthBytes i
 	if contentLengthBytes < 0 {
 		contentLengthBytes = 0
 	}
-	return []string{
-		statsValue(encodeTimeSeconds, stats.LoadEncodeTime().Seconds()),
+	result := []string{}
+	if includeEncodeTime {
+		result = append(result, statsValue(encodeTimeSeconds, stats.LoadEncodeTime().Seconds()))
+	}
+	result = append(result,
 		statsValue(estimatedSeriesCount, stats.LoadEstimatedSeriesCount()),
 		statsValue(fetchedChunkBytes, stats.LoadFetchedChunkBytes()),
 		statsValue(fetchedChunksCount, stats.LoadFetchedChunks()),
@@ -553,7 +571,8 @@ func getResponseQueryStats(queryResponseTime time.Duration, contentLengthBytes i
 		statsValue(shardedQueries, stats.LoadShardedQueries()),
 		statsValue(splitQueries, stats.LoadSplitQueries()),
 		statsValue(remoteExecutionRequestCount, stats.LoadRemoteExecutionRequestCount()),
-	}
+	)
+	return result
 }
 
 func statsValue(name string, val interface{}) string {
